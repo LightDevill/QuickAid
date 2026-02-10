@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: quickaid-postgres
+    environment:
+      POSTGRES_DB: quickaid
+      POSTGRES_USER: quickaid
+      POSTGRES_PASSWORD: quickaid_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quickaid"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Sessions
+  redis:
+    image: redis:7-alpine
+    container_name: quickaid-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./backend/services/auth-service
+      dockerfile: Dockerfile
+    container_name: quickaid-auth
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgres://quickaid:quickaid_secret@postgres:5432/quickaid
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-quickaid-dev-secret}
+    restart: unless-stopped
+
+  # Core Service
+  core-service:
+    build:
+      context: ./backend/services/core-service
+      dockerfile: Dockerfile
+    container_name: quickaid-core
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DATABASE_URL: postgres://quickaid:quickaid_secret@postgres:5432/quickaid
+      REDIS_URL: redis://redis:6379
+    restart: unless-stopped
+
+  # Workflow Service
+  workflow-service:
+    build:
+      context: ./backend/services/workflow-service
+      dockerfile: Dockerfile
+    container_name: quickaid-workflow
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      core-service:
+        condition: service_started
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgres://quickaid:quickaid_secret@postgres:5432/quickaid
+      REDIS_URL: redis://redis:6379
+      CORE_SERVICE_URL: http://core-service:3002
+    restart: unless-stopped
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./backend/services/notification-service
+      dockerfile: Dockerfile
+    container_name: quickaid-notify
+    ports:
+      - "3004:3004"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      REDIS_URL: redis://redis:6379
+      SMS_API_KEY: ${SMS_API_KEY:-test-key}
+    restart: unless-stopped
+
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./backend/services/analytics-service
+      dockerfile: Dockerfile
+    container_name: quickaid-analytics
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      DATABASE_URL: postgres://quickaid:quickaid_secret@postgres:5432/quickaid
+      REDIS_URL: redis://redis:6379
+    restart: unless-stopped
+
+  # API Gateway (Optional - for production-like testing)
+  gateway:
+    build:
+      context: ./backend/gateway
+      dockerfile: Dockerfile
+    container_name: quickaid-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - core-service
+      - workflow-service
+      - notification-service
+      - analytics-service
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+      AUTH_SERVICE_URL: http://auth-service:3001
+      CORE_SERVICE_URL: http://core-service:3002
+      WORKFLOW_SERVICE_URL: http://workflow-service:3003
+      NOTIFICATION_SERVICE_URL: http://notification-service:3004
+      ANALYTICS_SERVICE_URL: http://analytics-service:3005
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: quickaid-network
