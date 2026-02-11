@@ -17,11 +17,15 @@ const Navbar = () => {
     };
 
     const navLinks = isAuthenticated
-        ? [
-            { to: '/dashboard', label: 'Dashboard', icon: Home },
-            { to: '/search', label: 'Search', icon: Search },
-            { to: '/my-bookings', label: 'My Bookings', icon: FileText },
-        ]
+        ? user?.role === 'hospital_admin'
+            ? [
+                { to: '/dashboard', label: 'Hospital Management', icon: Home },
+            ]
+            : [
+                { to: '/dashboard', label: 'Dashboard', icon: Home },
+                { to: '/search', label: 'Search', icon: Search },
+                { to: '/my-bookings', label: 'My Bookings', icon: FileText },
+            ]
         : [];
 
     return (

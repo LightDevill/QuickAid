@@ -42,6 +42,9 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<RoleGuard allowedRoles={['citizen', 'hospital_admin', 'quickaid_admin']} />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
+              </Route>
+
+              <Route element={<RoleGuard allowedRoles={['citizen', 'quickaid_admin']} />}>
                 <Route path="/my-bookings" element={<MyBookingsPage />} />
               </Route>
 
