@@ -16,11 +16,11 @@ export const authApi = {
                 data: {
                     request_id: 'req_mock_' + Date.now(),
                     message: 'OTP sent successfully',
-                    otp: '1234',
+                    otp: '123456',
                 },
                 // Also at top level for backward compatibility
                 request_id: 'req_mock_' + Date.now(),
-                otp: '1234',
+                otp: '123456',
             };
         }
 
@@ -38,7 +38,7 @@ export const authApi = {
             console.log('[MOCK] verifyOtp:', { requestId, otp, phone });
             await delay(800);
 
-            if (otp !== '1234') {
+            if (otp !== '123456') {
                 const error = new Error('Invalid OTP');
                 error.response = { data: { error: { message: 'Invalid OTP' } } };
                 throw error;

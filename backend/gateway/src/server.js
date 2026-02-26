@@ -1,7 +1,4 @@
-// API Gateway - Main Server
-// Routes requests to microservices with rate limiting and circuit breakers
-
-require('dotenv').config();
+require('dotenv').config();    // API Gateway - Main Server  // Routes requests to microservices with rate limiting and circuit breakers
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -56,12 +53,62 @@ for (const [name, url] of Object.entries(SERVICES)) {
 app.use(helmet({
     contentSecurityPolicy: false  // Allow proxying
 }));
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Idempotency-Key, X-Role, X-Signature'
+    );
+    res.header(
+        'Access-Control-Allow-Methods',
+        'GET,POST,PUT,DELETE,OPTIONS'
+    );
 
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+
+    next();
+});
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: function (origin, callback) {
+        const allowedOrigins = [
+            'http://localhost:5173',
+            'http://localhost:3000'
+        ];
+
+        // Allow REST tools / Postman (no origin)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Role', 'X-Signature']
+    allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'Idempotency-Key',
+        'X-Role',
+        'X-Signature'
+    ]
 }));
+
+
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Idempotency-Key, X-Role, X-Signature'
+    );
+    res.sendStatus(200);
+});
 
 // Rate limiting middleware
 async function rateLimit(req, res, next) {
@@ -132,21 +179,40 @@ function createServiceProxy(serviceName, serviceUrl, pathRewrite = {}) {
         target: serviceUrl,
         changeOrigin: true,
         pathRewrite,
+
+        onProxyReq: (proxyReq, req) => {
+            proxyReq.setHeader('X-Forwarded-For', req.ip);
+            proxyReq.setHeader(
+                'X-Request-ID',
+                `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            );
+        },
+
+        onProxyRes: (proxyRes, req, res) => {
+            // Force CORS headers on all proxied responses
+            res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+            res.header('Access-Control-Allow-Credentials', 'true');
+            res.header(
+                'Access-Control-Allow-Methods',
+                'GET,POST,PUT,DELETE,OPTIONS'
+            );
+            res.header(
+                'Access-Control-Allow-Headers',
+                'Content-Type, Authorization, Idempotency-Key, X-Role, X-Signature'
+            );
+        },
+
         onError: (err, req, res) => {
             console.error(`[Proxy] ${serviceName} error:`, err.message);
 
             if (!res.headersSent) {
+                res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
                 res.status(503).json({
                     error: 'E_SERVICE_UNAVAILABLE',
                     service: serviceName,
                     message: 'Service temporarily unavailable'
                 });
             }
-        },
-        onProxyReq: (proxyReq, req) => {
-            // Forward original IP
-            proxyReq.setHeader('X-Forwarded-For', req.ip);
-            proxyReq.setHeader('X-Request-ID', `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
         }
     });
 }

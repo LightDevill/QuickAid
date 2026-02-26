@@ -184,7 +184,7 @@ export const LOCK_WINDOW_DURATION = 90;
 export const BOOKING_LOCK_WINDOW = 90;  // ← THIS WAS MISSING
 
 // OTP settings
-export const OTP_LENGTH = 4;
+export const OTP_LENGTH = 6;
 export const OTP_RESEND_TIMEOUT = 30;
 
 // SSE heartbeat interval
@@ -219,7 +219,7 @@ export const MATCH_SCORE_COLORS = {
 // ============================================
 // API CONFIGURATION
 // ============================================
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3004';
 export const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL || 'http://localhost:3004';
 

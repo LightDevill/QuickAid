@@ -9,7 +9,7 @@ const sendOtp = {
 const verifyOtp = {
     body: Joi.object().keys({
         phone: Joi.string().required().pattern(/^\+91[0-9]{10}$/),
-        otp: Joi.string().required().length(4),
+        otp: Joi.string().required().length(6),
         request_id: Joi.string().required().uuid(),
         aadhaar_number: Joi.string().allow(null, ''),
     }),

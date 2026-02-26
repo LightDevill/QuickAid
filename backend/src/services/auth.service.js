@@ -96,12 +96,39 @@ class AuthService {
 
     // Mock Admin Login
     static async mockAdminLogin(role) {
-        // Find first user with that role
-        // This is purely for dev ease
-        const { rows } = await require('../config/database').query('SELECT * FROM users WHERE role = $1 LIMIT 1', [role]);
-        const user = rows[0];
+        const normalizedRole = String(role || '').toLowerCase().trim().replace(/[-\s]/g, '_');
+        const allowedRoles = ['quickaid_admin', 'hospital_admin', 'doctor', 'ambulance_partner', 'citizen'];
 
-        if (!user) throw new BadRequestError(`No user with role ${role} found. Run seed?`);
+        if (!allowedRoles.includes(normalizedRole)) {
+            throw new BadRequestError(`Invalid role "${role}"`);
+        }
+
+        // Find first user with that role. If missing in development, create one automatically.
+        const db = require('../config/database');
+        const { rows } = await db.query('SELECT * FROM users WHERE role = $1 LIMIT 1', [normalizedRole]);
+        let user = rows[0];
+
+        if (!user) {
+            if (process.env.NODE_ENV !== 'development') {
+                throw new BadRequestError(`No user with role ${normalizedRole} found`);
+            }
+
+            const phoneByRole = {
+                quickaid_admin: '+919900000001',
+                hospital_admin: '+919900000002',
+                doctor: '+919900000003',
+                ambulance_partner: '+919900000004',
+                citizen: '+919900000005',
+            };
+
+            const created = await UserModel.create({
+                phone: phoneByRole[normalizedRole] || '+919900000099',
+                name: `Dev ${normalizedRole.replace('_', ' ')}`,
+                role: normalizedRole,
+                aadhaar_hash: null,
+            });
+            user = created;
+        }
 
         const tokens = generateTokens(user);
         await UserModel.createSession(user.id, tokens.refreshToken);

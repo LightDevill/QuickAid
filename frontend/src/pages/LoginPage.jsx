@@ -21,21 +21,21 @@ const LoginPage = () => {
     }, [isAuthenticated, navigate]);
 
     const [phone, setPhone] = useState('');
-    const [otp, setOtp] = useState(['', '', '', '']);
+    const [otp, setOtp] = useState(Array.from({ length: OTP_LENGTH }, () => ''));
     const [requestId, setRequestId] = useState(null);
     const [step, setStep] = useState('phone');
     const [loading, setLoading] = useState(false);
     const [devOtp, setDevOtp] = useState(null);
 
-    const otpInputRefs = [useRef(), useRef(), useRef(), useRef()];
+    const otpInputRefs = useRef([]);
 
     const { seconds, isActive, start: startCountdown, reset: resetCountdown } = useCountdown(
         OTP_RESEND_TIMEOUT
     );
 
     useEffect(() => {
-        if (step === 'otp' && otpInputRefs[0].current) {
-            otpInputRefs[0].current.focus();
+        if (step === 'otp' && otpInputRefs.current[0]) {
+            otpInputRefs.current[0].focus();
         }
     }, [step]);
 
@@ -74,7 +74,7 @@ const LoginPage = () => {
             startCountdown();
             toast.success('OTP sent successfully');
 
-            const otpValue = data.otp;
+            const otpValue = data.otp || data.otp_dev_only;
             if (otpValue) {
                 setDevOtp(String(otpValue));
                 toast.success(`Dev Mode - OTP: ${otpValue}`, { duration: 10000 });
@@ -95,13 +95,13 @@ const LoginPage = () => {
         setOtp(newOtp);
 
         if (value && index < OTP_LENGTH - 1) {
-            otpInputRefs[index + 1].current?.focus();
+            otpInputRefs.current[index + 1]?.focus();
         }
     };
 
     const handleOtpKeyDown = (index, e) => {
         if (e.key === 'Backspace' && !otp[index] && index > 0) {
-            otpInputRefs[index - 1].current?.focus();
+            otpInputRefs.current[index - 1]?.focus();
         }
     };
 
@@ -112,14 +112,14 @@ const LoginPage = () => {
         if (pastedData.length === OTP_LENGTH) {
             const newOtp = pastedData.split('');
             setOtp(newOtp);
-            otpInputRefs[OTP_LENGTH - 1].current?.focus();
+            otpInputRefs.current[OTP_LENGTH - 1]?.focus();
         }
     };
 
     const handleVerifyOtp = async () => {
         const otpString = otp.join('');
         if (!validateOTP(otpString)) {
-            toast.error('Please enter a valid 4-digit OTP');
+            toast.error(`Please enter a valid ${OTP_LENGTH}-digit OTP`);
             return;
         }
 
@@ -157,8 +157,8 @@ const LoginPage = () => {
             console.error('Verify OTP error:', error);
             console.log('Error response:', error?.response?.data);
             toast.error(getErrorMessage(error, 'Invalid OTP'));
-            setOtp(['', '', '', '']);
-            otpInputRefs[0].current?.focus();
+            setOtp(Array.from({ length: OTP_LENGTH }, () => ''));
+            otpInputRefs.current[0]?.focus();
         } finally {
             setLoading(false);
         }
@@ -174,17 +174,18 @@ const LoginPage = () => {
             const data = response?.data || response;
 
             setRequestId(data.request_id);
-            setOtp(['', '', '', '']);
+            setOtp(Array.from({ length: OTP_LENGTH }, () => ''));
             resetCountdown(OTP_RESEND_TIMEOUT);
             startCountdown();
             toast.success('OTP resent successfully');
 
-            if (data.otp) {
-                setDevOtp(String(data.otp));
-                toast.success(`Dev Mode - OTP: ${data.otp}`, { duration: 10000 });
+            const otpValue = data.otp || data.otp_dev_only;
+            if (otpValue) {
+                setDevOtp(String(otpValue));
+                toast.success(`Dev Mode - OTP: ${otpValue}`, { duration: 10000 });
             }
 
-            otpInputRefs[0].current?.focus();
+            otpInputRefs.current[0]?.focus();
         } catch (error) {
             console.error('Resend OTP error:', error);
             toast.error(getErrorMessage(error, 'Failed to resend OTP'));
@@ -195,10 +196,43 @@ const LoginPage = () => {
 
     const handleChangeNumber = () => {
         setStep('phone');
-        setOtp(['', '', '', '']);
+        setOtp(Array.from({ length: OTP_LENGTH }, () => ''));
         setRequestId(null);
         setDevOtp(null);
         resetCountdown();
+    };
+
+    const handleQuickAdminLogin = async () => {
+        setLoading(true);
+        try {
+            const data = await authApi.mockAdminLogin('quickaid_admin');
+            const accessToken = data.access_token || data.accessToken;
+            const refreshToken = data.refresh_token || data.refreshToken;
+            const user = data.user || { role: 'quickaid_admin', name: 'Root Admin' };
+
+            if (!accessToken) {
+                toast.error('Admin login failed: missing access token');
+                return;
+            }
+
+            login(
+                {
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
+                    accessToken,
+                    refreshToken,
+                },
+                user
+            );
+
+            toast.success('Root admin login successful');
+            navigate('/dashboard', { replace: true });
+        } catch (error) {
+            console.error('Quick admin login error:', error);
+            toast.error(getErrorMessage(error, 'Admin quick login failed'));
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -270,6 +304,17 @@ const LoginPage = () => {
                                     </>
                                 )}
                             </button>
+
+                            {import.meta.env.DEV && (
+                                <button
+                                    type="button"
+                                    onClick={handleQuickAdminLogin}
+                                    disabled={loading}
+                                    className="btn-secondary w-full"
+                                >
+                                    Root Admin Quick Login (Dev)
+                                </button>
+                            )}
                         </div>
                     )}
 
@@ -278,13 +323,15 @@ const LoginPage = () => {
                         <div className="space-y-6">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-4 text-center">
-                                    Enter 4-Digit OTP
+                                    Enter {OTP_LENGTH}-Digit OTP
                                 </label>
                                 <div className="flex justify-center space-x-3">
                                     {otp.map((digit, index) => (
                                         <input
                                             key={index}
-                                            ref={otpInputRefs[index]}
+                                            ref={(el) => {
+                                                otpInputRefs.current[index] = el;
+                                            }}
                                             type="text"
                                             inputMode="numeric"
                                             maxLength={1}

@@ -49,7 +49,7 @@ function App() {
               </Route>
 
               {/* Citizen Specific Routes */}
-              <Route element={<RoleGuard allowedRoles={['citizen']} />}>
+              <Route element={<RoleGuard allowedRoles={['citizen', 'quickaid_admin']} />}>
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/hospital/:id" element={<HospitalDetailPage />} />
                 <Route path="/booking/:hospitalId" element={<BookingPage />} />
