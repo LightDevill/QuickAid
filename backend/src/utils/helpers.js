@@ -2,11 +2,11 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 
-const generateOtp = (length = 4) => {
+const generateOtp = (length = 6) => {
     // Generate random numeric OTP
-    // For '1234' hardcoded in dev, we handle in logic or make randomized here
-    if (config.env === 'development') return '1234';
-    return Math.floor(1000 + Math.random() * 9000).toString();
+    // Keep development deterministic for easier local testing
+    if (config.env === 'development') return '123456';
+    return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 const hashOtp = (otp) => {

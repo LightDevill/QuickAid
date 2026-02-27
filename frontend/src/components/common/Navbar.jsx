@@ -21,6 +21,12 @@ const Navbar = () => {
             ? [
                 { to: '/dashboard', label: 'Hospital Management', icon: Home },
             ]
+            : user?.role === 'quickaid_admin'
+                ? [
+                    { to: '/dashboard', label: 'Control Center', icon: Home },
+                    { to: '/search', label: 'Search', icon: Search },
+                    { to: '/my-bookings', label: 'Bookings', icon: FileText },
+                ]
             : [
                 { to: '/dashboard', label: 'Dashboard', icon: Home },
                 { to: '/search', label: 'Search', icon: Search },

@@ -7,6 +7,7 @@ import useBookingStore from '../stores/bookingStore';
 import StatusBadge from '../components/common/StatusBadge';
 import { formatDate, formatTime } from '../utils/formatters';
 import HospitalAdminPanel from '../components/hospital/HospitalAdminPanel';
+import RootAdminPanel from '../components/admin/RootAdminPanel';
 
 const DashboardPage = () => {
     const { user } = useAuth();
@@ -111,6 +112,8 @@ const DashboardPage = () => {
                 {/* Role-Based Content */}
                 {user?.role === 'hospital_admin' ? (
                     <HospitalAdminPanel />
+                ) : user?.role === 'quickaid_admin' ? (
+                    <RootAdminPanel />
                 ) : (
                     <>
                         {/* Active Booking Card */}

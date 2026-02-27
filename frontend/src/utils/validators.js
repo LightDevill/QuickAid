@@ -1,3 +1,5 @@
+import { OTP_LENGTH } from './constants';
+
 // Validate phone number (Indian format)
 export const validatePhone = (phone) => {
     if (!phone) return false;
@@ -22,8 +24,8 @@ export const validatePhone = (phone) => {
 export const validateOTP = (otp) => {
     if (!otp) return false;
 
-    // Check if it's a 4-digit number
-    return /^\d{4}$/.test(otp);
+    // Check if it's a numeric OTP with configured length
+    return new RegExp(`^\\d{${OTP_LENGTH}}$`).test(otp);
 };
 
 // Validate booking data

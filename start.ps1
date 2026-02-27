@@ -74,11 +74,11 @@ Write-Host "[4/4] Starting Backend Server..." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "   All services started!"                 -ForegroundColor Cyan
-Write-Host "   Backend: http://localhost:8080"         -ForegroundColor Cyan
+Write-Host "   Backend: http://localhost:5000"         -ForegroundColor Cyan
 Write-Host "   Frontend: Run 'npm run dev' in"        -ForegroundColor Cyan
 Write-Host "   frontend folder (new terminal)"         -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-Set-Location -Path "C:\Users\Abuzar\Downloads\QUICKAID\QUICKAID\backend"
+Set-Location -Path "$PSScriptRoot\backend"
 node server.js
