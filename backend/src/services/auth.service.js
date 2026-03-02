@@ -98,6 +98,7 @@ class AuthService {
     static async mockAdminLogin(role) {
         const normalizedRole = String(role || '').toLowerCase().trim().replace(/[-\s]/g, '_');
         const allowedRoles = ['quickaid_admin', 'hospital_admin', 'doctor', 'ambulance_partner', 'citizen'];
+        const defaultHospitalId = 'hosp_lilavati_001';
 
         if (!allowedRoles.includes(normalizedRole)) {
             throw new BadRequestError(`Invalid role "${role}"`);
@@ -125,9 +126,23 @@ class AuthService {
                 phone: phoneByRole[normalizedRole] || '+919900000099',
                 name: `Dev ${normalizedRole.replace('_', ' ')}`,
                 role: normalizedRole,
+                hospital_id: normalizedRole === 'hospital_admin' ? defaultHospitalId : null,
                 aadhaar_hash: null,
             });
             user = created;
+        }
+
+        // Ensure dev hospital admins are linked to a hospital so their dashboard can load.
+        if (
+            process.env.NODE_ENV === 'development' &&
+            normalizedRole === 'hospital_admin' &&
+            !user.hospital_id
+        ) {
+            const updated = await db.query(
+                'UPDATE users SET hospital_id = $1 WHERE id = $2 RETURNING *',
+                [defaultHospitalId, user.id]
+            );
+            user = updated.rows[0] || { ...user, hospital_id: defaultHospitalId };
         }
 
         const tokens = generateTokens(user);
