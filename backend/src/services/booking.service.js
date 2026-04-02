@@ -30,6 +30,19 @@ class BookingService {
         return await BookingModel.findByUserId(userId);
     }
 
+    // Get hospital bookings
+    static async getHospitalBookings(hospitalId, user) {
+        if (!hospitalId) {
+            throw new BadRequestError('Hospital not found');
+        }
+
+        if (user.role !== 'quickaid_admin' && user.hospital_id !== hospitalId) {
+            throw new ForbiddenError('Unauthorized access to hospital bookings');
+        }
+
+        return await BookingModel.findByHospitalId(hospitalId);
+    }
+
     // Approve
     static async approveBooking(id, adminUser) {
         const booking = await BookingModel.findById(id);

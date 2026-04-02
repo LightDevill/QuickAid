@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
     Clock,
     CheckCircle,
@@ -7,11 +8,9 @@ import {
     Activity,
     ChevronRight,
     History,
-    Filter,
     Calendar,
     Phone,
-    UserMinus,
-    AlertCircle
+    UserMinus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { bookingApi } from '../../api/bookingApi';
@@ -29,8 +28,7 @@ const BookingRequestList = ({ hospitalId }) => {
     const fetchBookings = async () => {
         setLoading(true);
         try {
-            // In a real app, we'd filter by hospitalId on the backend
-            const data = await bookingApi.getMyBookings();
+            const data = await bookingApi.getHospitalBookings(hospitalId);
             setBookings(data.bookings || []);
         } catch (error) {
             console.error('Fetch bookings error:', error);
@@ -56,22 +54,23 @@ const BookingRequestList = ({ hospitalId }) => {
         }
     };
 
-    const handleDischarge = async (bookingId) => {
+    const handleDischarge = async () => {
         try {
             // Mock discharge API call
             await new Promise(resolve => setTimeout(resolve, 800));
             toast.success('Patient discharged. Bed availability updated.');
             // In a real app, this would update the bed count on the server
             fetchBookings();
-        } catch (error) {
+        } catch {
             toast.error('Discharge failed');
         }
     };
 
     const filteredBookings = bookings.filter(b => {
+        if (hospitalId && b.hospital_id !== hospitalId) return false;
         if (currentTab === 'pending') return b.status === 'pending';
         if (currentTab === 'active') return b.status === 'approved';
-        return b.status === 'rejected' || b.status === 'cancelled' || b.status === 'completed';
+        return b.status === 'rejected' || b.status === 'cancelled' || b.status === 'completed' || b.status === 'expired';
     });
 
     if (loading) {
@@ -134,7 +133,7 @@ const BookingRequestList = ({ hospitalId }) => {
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             <h3 className="font-bold text-slate-900 dark:text-white">
-                                                Patient #{(booking.id || booking.booking_id || 'UNKNOWN').slice(-6).toUpperCase()}
+                                                {booking.patient_name || 'Patient'} #{(booking.id || booking.booking_id || 'UNKNOWN').slice(-6).toUpperCase()}
                                             </h3>
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${booking.status === 'pending' ? 'bg-amber-100 text-amber-700' :
                                                 booking.status === 'approved' ? 'bg-green-100 text-green-700' :
@@ -171,17 +170,24 @@ const BookingRequestList = ({ hospitalId }) => {
                                 </div>
 
                                 <div className="flex items-center gap-2 lg:border-l lg:border-slate-100 lg:dark:border-slate-800 lg:pl-6">
+                                    <Link
+                                        to={`/booking-status/${booking.booking_id || booking.id}`}
+                                        className="flex-1 lg:flex-none flex items-center justify-center space-x-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700"
+                                    >
+                                        <span>View Status</span>
+                                        <ChevronRight className="w-4 h-4" />
+                                    </Link>
                                     {booking.status === 'pending' ? (
                                         <>
                                             <button
-                                                onClick={() => handleAction(booking.id, 'reject')}
+                                                onClick={() => handleAction(booking.booking_id || booking.id, 'reject')}
                                                 className="flex-1 lg:flex-none flex items-center justify-center space-x-2 px-4 py-2 rounded-xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all border border-transparent hover:border-red-100"
                                             >
                                                 <XCircle className="w-4 h-4" />
                                                 <span>Reject</span>
                                             </button>
                                             <button
-                                                onClick={() => handleAction(booking.id, 'approve')}
+                                                onClick={() => handleAction(booking.booking_id || booking.id, 'approve')}
                                                 className="flex-1 lg:flex-none flex items-center justify-center space-x-2 px-6 py-2 rounded-xl text-sm font-bold bg-primary text-white hover:bg-primary-700 shadow-md shadow-primary/20 transition-all active:scale-95"
                                             >
                                                 <CheckCircle className="w-4 h-4" />
@@ -190,7 +196,7 @@ const BookingRequestList = ({ hospitalId }) => {
                                         </>
                                     ) : booking.status === 'approved' ? (
                                         <button
-                                            onClick={() => handleDischarge(booking.id)}
+                                            onClick={handleDischarge}
                                             className="w-full lg:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 transition-all"
                                         >
                                             <UserMinus className="w-4 h-4" />

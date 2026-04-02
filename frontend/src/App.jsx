@@ -9,6 +9,7 @@ import SOSFloatingButton from './components/common/SOSFloatingButton';
 // Pages
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
 import DashboardPage from './pages/DashboardPage';
 import SearchPage from './pages/SearchPage';
 import HospitalDetailPage from './pages/HospitalDetailPage';
@@ -16,6 +17,7 @@ import BookingPage from './pages/BookingPage';
 import BookingStatusPage from './pages/BookingStatusPage';
 import MyBookingsPage from './pages/MyBookingsPage';
 import SOSPage from './pages/SOSPage';
+import AmbulanceTrackingPage from './pages/AmbulanceTrackingPage';
 import NotFoundPage from './pages/NotFoundPage';
 import AccessDeniedPage from './pages/AccessDeniedPage';
 
@@ -35,6 +37,7 @@ function App() {
             {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
             <Route path="/404" element={<NotFoundPage />} />
             <Route path="/access-denied" element={<AccessDeniedPage />} />
 
@@ -52,9 +55,15 @@ function App() {
               <Route element={<RoleGuard allowedRoles={['citizen', 'quickaid_admin']} />}>
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/hospital/:id" element={<HospitalDetailPage />} />
+                <Route path="/book/:hospitalId" element={<BookingPage />} />
                 <Route path="/booking/:hospitalId" element={<BookingPage />} />
-                <Route path="/booking-status/:id" element={<BookingStatusPage />} />
+                <Route path="/bookings" element={<Navigate to="/my-bookings" replace />} />
                 <Route path="/sos" element={<SOSPage />} />
+                <Route path="/ambulance-tracking" element={<AmbulanceTrackingPage />} />
+              </Route>
+
+              <Route element={<RoleGuard allowedRoles={['citizen', 'hospital_admin', 'quickaid_admin']} />}>
+                <Route path="/booking-status/:id" element={<BookingStatusPage />} />
               </Route>
             </Route>
 

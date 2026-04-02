@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import useAuthStore from '../stores/authStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const REFRESH_TIMEOUT_MS = 10000;
 
 // Create axios instance
 const apiClient = axios.create({
@@ -48,11 +49,22 @@ apiClient.interceptors.response.use(
                 }
 
                 // Try to refresh the token
-                const response = await axios.post(`${API_BASE_URL}/v1/auth/refresh`, {
-                    refresh_token: refreshToken,
-                });
+                const response = await axios.post(
+                    `${API_BASE_URL}/v1/auth/refresh`,
+                    {
+                        refresh_token: refreshToken,
+                    },
+                    {
+                        timeout: REFRESH_TIMEOUT_MS,
+                    }
+                );
 
-                const { access_token } = response.data;
+                const refreshPayload = response.data?.data || response.data || {};
+                const access_token = refreshPayload.access_token || refreshPayload.accessToken;
+
+                if (!access_token) {
+                    throw new Error('Refresh token response did not include a new access token');
+                }
 
                 // Update token in store
                 useAuthStore.getState().refreshAccessToken(access_token);

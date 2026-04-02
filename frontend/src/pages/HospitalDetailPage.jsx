@@ -94,7 +94,7 @@ const HospitalDetailPage = () => {
                         </div>
 
                         <button
-                            onClick={() => navigate(`/book/${hospital.hospital_id}`)}
+                            onClick={() => navigate(`/booking/${hospital.hospital_id}`)}
                             className="btn-primary md:w-auto"
                         >
                             Book a Bed

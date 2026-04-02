@@ -41,7 +41,8 @@ async function authMiddleware(req, res, next) {
         req.user = {
             user_id: decoded.user_id,
             role: decoded.role,
-            phone: decoded.phone
+            phone: decoded.phone,
+            hospital_id: decoded.hospital_id || null
         };
 
         // Cache for subsequent requests
@@ -100,7 +101,8 @@ async function optionalAuth(req, res, next) {
                 const decoded = jwt.verify(token, JWT_SECRET);
                 req.user = {
                     user_id: decoded.user_id,
-                    role: decoded.role
+                    role: decoded.role,
+                    hospital_id: decoded.hospital_id || null
                 };
             }
         } catch (err) {

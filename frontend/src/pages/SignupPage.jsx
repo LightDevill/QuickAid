@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Phone, ArrowRight, Loader2 } from 'lucide-react';
+import { User, Phone, ArrowRight, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import useAuth from '../hooks/useAuth';
@@ -9,7 +9,7 @@ import { authApi } from '../api/authApi';
 import { validatePhone, validateOTP } from '../utils/validators';
 import { OTP_LENGTH, OTP_RESEND_TIMEOUT } from '../utils/constants';
 
-const LoginPage = () => {
+const SignupPage = () => {
     const { isAuthenticated, login } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
@@ -23,10 +23,11 @@ const LoginPage = () => {
         }
     }, [isAuthenticated, navigate, from]);
 
+    const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState(Array.from({ length: OTP_LENGTH }, () => ''));
     const [requestId, setRequestId] = useState(null);
-    const [step, setStep] = useState('phone');
+    const [step, setStep] = useState('details');
     const [loading, setLoading] = useState(false);
     const [devOtp, setDevOtp] = useState(null);
 
@@ -42,15 +43,6 @@ const LoginPage = () => {
         }
     }, [step]);
 
-    const getErrorMessage = (error, fallback = 'Something went wrong') => {
-        const errData = error?.response?.data;
-        if (typeof errData?.error === 'string') return errData.error;
-        if (typeof errData?.error?.message === 'string') return errData.error.message;
-        if (typeof errData?.message === 'string') return errData.message;
-        if (typeof error?.message === 'string') return error.message;
-        return fallback;
-    };
-
     const handlePhoneChange = (e) => {
         const value = e.target.value.replace(/\D/g, '');
         if (value.length <= 10) {
@@ -59,6 +51,10 @@ const LoginPage = () => {
     };
 
     const handleSendOtp = async () => {
+        if (!name.trim()) {
+            toast.error('Please enter your full name');
+            return;
+        }
         if (!validatePhone(phone)) {
             toast.error('Please enter a valid 10-digit phone number');
             return;
@@ -69,8 +65,6 @@ const LoginPage = () => {
             const fullPhone = phone.startsWith('91') ? `+${phone}` : `+91${phone}`;
             const response = await authApi.sendOtp(fullPhone);
             const data = response?.data || response;
-
-            console.log('[LOGIN] Send OTP response:', data);
 
             setRequestId(data.request_id);
             setStep('otp');
@@ -84,7 +78,7 @@ const LoginPage = () => {
             }
         } catch (error) {
             console.error('Send OTP error:', error);
-            // toast.error(getErrorMessage(error, 'Failed to send OTP'));
+            toast.error('Failed to send OTP');
         } finally {
             setLoading(false);
         }
@@ -129,10 +123,9 @@ const LoginPage = () => {
         setLoading(true);
         try {
             const fullPhone = phone.startsWith('91') ? `+${phone}` : `+91${phone}`;
-            const response = await authApi.verifyOtp(requestId, otpString, fullPhone);
+            // Pass name to be registered
+            const response = await authApi.verifyOtp(requestId, otpString, fullPhone, null, name);
             const data = response?.data || response;
-
-            console.log('[LOGIN] Verify OTP response:', data);
 
             const accessToken = data.access_token || data.accessToken;
             const refreshToken = data.refresh_token || data.refreshToken;
@@ -143,23 +136,20 @@ const LoginPage = () => {
                     {
                         access_token: accessToken,
                         refresh_token: refreshToken,
-                        accessToken,
-                        refreshToken,
+                        accessToken: accessToken,
+                        refreshToken: refreshToken,
                     },
                     user
                 );
 
-                console.log('[LOGIN] Login successful, navigating to dashboard...');
-                toast.success('Login successful!');
+                toast.success('Registration and Login successful!');
                 navigate(from, { replace: true });
             } else {
-                console.log('Unexpected response format - could not extract tokens or user:', data);
-                // toast.error('Invalid response from server');
+                toast.error('Invalid response from server');
             }
         } catch (error) {
             console.error('Verify OTP error:', error);
-            console.log('Error response:', error?.response?.data);
-            // toast.error(getErrorMessage(error, 'Invalid OTP'));
+            toast.error('Invalid OTP');
             setOtp(Array.from({ length: OTP_LENGTH }, () => ''));
             otpInputRefs.current[0]?.focus();
         } finally {
@@ -191,89 +181,18 @@ const LoginPage = () => {
             otpInputRefs.current[0]?.focus();
         } catch (error) {
             console.error('Resend OTP error:', error);
-            // toast.error(getErrorMessage(error, 'Failed to resend OTP'));
+            toast.error('Failed to resend OTP');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleChangeNumber = () => {
-        setStep('phone');
+    const handleChangeDetails = () => {
+        setStep('details');
         setOtp(Array.from({ length: OTP_LENGTH }, () => ''));
         setRequestId(null);
         setDevOtp(null);
         resetCountdown();
-    };
-
-    const handleQuickAdminLogin = async () => {
-        setLoading(true);
-        try {
-            const data = await authApi.mockAdminLogin('quickaid_admin');
-            const accessToken = data.access_token || data.accessToken;
-            const refreshToken = data.refresh_token || data.refreshToken;
-            const user = data.user || { role: 'quickaid_admin', name: 'Root Admin' };
-
-            if (!accessToken) {
-                // toast.error('Admin login failed: missing access token');
-                return;
-            }
-
-            login(
-                {
-                    access_token: accessToken,
-                    refresh_token: refreshToken,
-                    accessToken,
-                    refreshToken,
-                },
-                user
-            );
-
-            toast.success('Root admin login successful');
-            navigate(from, { replace: true });
-        } catch (error) {
-            console.error('Quick admin login error:', error);
-            // toast.error(getErrorMessage(error, 'Admin quick login failed'));
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleQuickHospitalAdminLogin = async () => {
-        setLoading(true);
-        try {
-            const data = await authApi.mockAdminLogin('hospital_admin');
-            const accessToken = data.access_token || data.accessToken;
-            const refreshToken = data.refresh_token || data.refreshToken;
-            const rawUser = data.user || { role: 'hospital_admin', name: 'Hospital Admin' };
-            const user = {
-                ...rawUser,
-                role: rawUser.role || 'hospital_admin',
-                hospital_id: rawUser.hospital_id || 'hosp_lilavati_001',
-            };
-
-            if (!accessToken) {
-                // toast.error('Hospital admin login failed: missing access token');
-                return;
-            }
-
-            login(
-                {
-                    access_token: accessToken,
-                    refresh_token: refreshToken,
-                    accessToken,
-                    refreshToken,
-                },
-                user
-            );
-
-            toast.success('Hospital admin login successful');
-            navigate(from, { replace: true });
-        } catch (error) {
-            console.error('Quick hospital admin login error:', error);
-            // toast.error(getErrorMessage(error, 'Hospital admin quick login failed'));
-        } finally {
-            setLoading(false);
-        }
     };
 
     return (
@@ -287,21 +206,48 @@ const LoginPage = () => {
                 <div className="card p-8">
                     <div className="text-center mb-8">
                         <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                            <Phone className="w-8 h-8 text-white" />
+                            {step === 'details' ? (
+                                <User className="w-8 h-8 text-white" />
+                            ) : (
+                                <Phone className="w-8 h-8 text-white" />
+                            )}
                         </div>
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-                            {step === 'phone' ? 'Welcome to QUICKAID' : 'Verify OTP'}
+                            {step === 'details' ? 'Create an Account' : 'Verify OTP'}
                         </h1>
                         <p className="text-slate-600 dark:text-slate-400">
-                            {step === 'phone'
-                                ? 'Enter your phone number to continue'
+                            {step === 'details'
+                                ? 'Enter your details to register'
                                 : `We sent a code to +91 ${phone}`}
                         </p>
                     </div>
 
-                    {/* Phone Input Step */}
-                    {step === 'phone' && (
+                    {step === 'details' && (
                         <div className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                    Full Name
+                                </label>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                                        <User className="w-4 h-4" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        placeholder="John Doe"
+                                        className="input pl-12"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleSendOtp();
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                            
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                                     Phone Number
@@ -330,7 +276,7 @@ const LoginPage = () => {
                             <button
                                 type="button"
                                 onClick={handleSendOtp}
-                                disabled={loading || !phone}
+                                disabled={loading || !phone || !name.trim()}
                                 className="btn-primary w-full flex items-center justify-center space-x-2"
                             >
                                 {loading ? (
@@ -345,31 +291,9 @@ const LoginPage = () => {
                                     </>
                                 )}
                             </button>
-
-                            {import.meta.env.DEV && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={handleQuickHospitalAdminLogin}
-                                        disabled={loading}
-                                        className="btn-secondary w-full"
-                                    >
-                                        Hospital Admin Login (Dev)
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleQuickAdminLogin}
-                                        disabled={loading}
-                                        className="btn-secondary w-full"
-                                    >
-                                        Root Admin Login (Dev)
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     )}
 
-                    {/* OTP Input Step */}
                     {step === 'otp' && (
                         <div className="space-y-6">
                             <div>
@@ -442,10 +366,10 @@ const LoginPage = () => {
 
                             <button
                                 type="button"
-                                onClick={handleChangeNumber}
+                                onClick={handleChangeDetails}
                                 className="btn-secondary w-full"
                             >
-                                Change Number
+                                Change Details
                             </button>
                         </div>
                     )}
@@ -461,19 +385,19 @@ const LoginPage = () => {
 
                 <div className="mt-6 text-center">
                     <p className="text-slate-600 dark:text-slate-400">
-                        Don't have an account?{' '}
-                        <Link to="/signup" className="text-primary font-medium hover:underline">
-                            Sign up here
+                        Already have an account?{' '}
+                        <Link to="/login" className="text-primary font-medium hover:underline">
+                            Log in here
                         </Link>
                     </p>
                 </div>
 
                 <p className="text-center text-sm text-slate-600 dark:text-slate-400 mt-6">
-                    By continuing, you agree to our Terms of Service and Privacy Policy
+                    By registering, you agree to our Terms of Service and Privacy Policy
                 </p>
             </motion.div>
         </div>
     );
 };
 
-export default LoginPage;
+export default SignupPage;

@@ -35,6 +35,16 @@ const getMyBookings = async (req, res, next) => {
     }
 };
 
+const getHospitalBookings = async (req, res, next) => {
+    try {
+        const hospitalId = req.query.hospital_id || req.user.hospital_id;
+        const result = await BookingService.getHospitalBookings(hospitalId, req.user);
+        res.json({ success: true, data: result });
+    } catch (e) {
+        next(e);
+    }
+};
+
 const approveBooking = async (req, res, next) => {
     try {
         const result = await BookingService.approveBooking(req.params.id, req.user);
@@ -67,6 +77,7 @@ module.exports = {
     createBooking,
     getBooking,
     getMyBookings,
+    getHospitalBookings,
     approveBooking,
     rejectBooking,
     cancelBooking,

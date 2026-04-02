@@ -212,6 +212,7 @@ router.post('/otp/verify', async (req, res, next) => {
             user_id: user.user_id,
             phone: user.phone,
             role: user.role,
+            hospital_id: user.hospital_id || null,
             type: 'access'
         }, JWT_SECRET, { expiresIn: JWT_ACCESS_EXPIRY });
 
@@ -233,6 +234,7 @@ router.post('/otp/verify', async (req, res, next) => {
         await redis.set(`session:${accessToken}`, JSON.stringify({
             user_id: user.user_id,
             role: user.role,
+            hospital_id: user.hospital_id || null,
             session_id: sessionId
         }), 900); // 15 minutes
 
@@ -249,6 +251,7 @@ router.post('/otp/verify', async (req, res, next) => {
                 phone: user.phone,
                 name: user.name,
                 role: user.role,
+                hospital_id: user.hospital_id || null,
                 aadhaar_verified: !!user.aadhaar_hash
             }
         });
@@ -309,6 +312,7 @@ router.post('/refresh', async (req, res, next) => {
             user_id: user.user_id,
             phone: user.phone,
             role: user.role,
+            hospital_id: user.hospital_id || null,
             type: 'access'
         }, JWT_SECRET, { expiresIn: JWT_ACCESS_EXPIRY });
 
@@ -320,7 +324,8 @@ router.post('/refresh', async (req, res, next) => {
         // Cache new session
         await redis.set(`session:${accessToken}`, JSON.stringify({
             user_id: user.user_id,
-            role: user.role
+            role: user.role,
+            hospital_id: user.hospital_id || null
         }), 900);
 
         res.status(200).json({
@@ -372,8 +377,9 @@ router.post('/admin/mockLogin', async (req, res, next) => {
     try {
         const { role } = req.body;
         const allowedRoles = ['hospital_admin', 'doctor', 'ambulance_partner', 'quickaid_admin'];
+        const normalizedRole = role?.toLowerCase();
 
-        if (!role || !allowedRoles.includes(role.toLowerCase())) {
+        if (!normalizedRole || !allowedRoles.includes(normalizedRole)) {
             return res.status(400).json({
                 error: 'E_INVALID_ROLE',
                 allowed: allowedRoles
@@ -381,23 +387,33 @@ router.post('/admin/mockLogin', async (req, res, next) => {
         }
 
         const userId = genId('USR');
+        const hospitalId = normalizedRole === 'hospital_admin' ? 'hosp_lilavati_001' : null;
         const accessToken = jwt.sign({
             user_id: userId,
-            role: role.toLowerCase(),
+            role: normalizedRole,
+            hospital_id: hospitalId,
             type: 'access',
             mock: true
         }, JWT_SECRET, { expiresIn: '1h' });
 
         await redis.set(`session:${accessToken}`, JSON.stringify({
             user_id: userId,
-            role: role.toLowerCase()
+            role: normalizedRole,
+            hospital_id: hospitalId,
+            mock: true
         }), 3600);
 
         res.status(200).json({
             access_token: accessToken,
             token_type: 'Bearer',
-            role: role.toLowerCase(),
+            role: normalizedRole,
             expires_in: 3600,
+            user: {
+                user_id: userId,
+                role: normalizedRole,
+                hospital_id: hospitalId,
+                name: normalizedRole === 'hospital_admin' ? 'Dev hospital admin' : 'Dev admin'
+            },
             warning: 'This is a mock token for development only'
         });
     } catch (err) {
@@ -428,7 +444,7 @@ router.get('/me', async (req, res, next) => {
 
         // Get user
         const userResult = await db.query(
-            'SELECT user_id, phone, name, role, aadhaar_last4, is_verified, created_at FROM users WHERE user_id = $1',
+            'SELECT user_id, phone, name, role, hospital_id, aadhaar_last4, is_verified, created_at FROM users WHERE user_id = $1',
             [decoded.user_id]
         );
 

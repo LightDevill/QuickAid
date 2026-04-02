@@ -65,6 +65,13 @@ class BookingModel {
         return rows;
     }
 
+    // Find all bookings for hospital
+    static async findByHospitalId(hospitalId) {
+        const text = 'SELECT * FROM bookings WHERE hospital_id = $1 ORDER BY created_at DESC';
+        const { rows } = await query(text, [hospitalId]);
+        return rows;
+    }
+
     // Check idempotency
     static async findByIdempotencyKey(key) {
         const text = 'SELECT * FROM bookings WHERE idempotency_key = $1';

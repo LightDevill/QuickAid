@@ -11,16 +11,18 @@ export const authApi = {
         if (MOCK_MODE) {
             console.log('[MOCK] sendOtp:', phone);
             await delay(500);
+            const dynamicOtp = Math.floor(100000 + Math.random() * 900000).toString();
+            console.log('[MOCK] Generated OTP:', dynamicOtp);
             return {
                 success: true,
                 data: {
                     request_id: 'req_mock_' + Date.now(),
                     message: 'OTP sent successfully',
-                    otp: '123456',
+                    otp: dynamicOtp,
                 },
                 // Also at top level for backward compatibility
                 request_id: 'req_mock_' + Date.now(),
-                otp: '123456',
+                otp: dynamicOtp,
             };
         }
 
@@ -33,18 +35,20 @@ export const authApi = {
     },
 
     // Verify OTP and get JWT tokens
-    verifyOtp: async (requestId, otp, phone, aadhaarNumber = null) => {
+    verifyOtp: async (requestId, otp, phone, aadhaarNumber = null, name = null) => {
         if (MOCK_MODE) {
-            console.log('[MOCK] verifyOtp:', { requestId, otp, phone });
+            console.log('[MOCK] verifyOtp:', { requestId, otp, phone, name });
             await delay(800);
 
-            if (otp !== '123456') {
+            // In mock mode, we just accept an OTP correctly formatted, or allow specific testing logic if needed.
+            // But since the frontend now passes real generated OTP back, we can just allow any 6-digit number in MOCK_MODE.
+            if (!/^\d{6}$/.test(otp)) {
                 const error = new Error('Invalid OTP');
                 error.response = { data: { error: { message: 'Invalid OTP' } } };
                 throw error;
             }
 
-            let user = mockUser;
+            let user = { ...mockUser, name: name || mockUser.name };
             if (phone.includes('11')) user = mockHospitalAdmin;
             if (phone.includes('12')) user = mockQuickAidAdmin;
 
@@ -63,6 +67,10 @@ export const authApi = {
 
         if (aadhaarNumber) {
             payload.aadhaar_number = aadhaarNumber;
+        }
+
+        if (name) {
+            payload.name = name;
         }
 
         console.log('[API] verifyOtp payload:', payload);

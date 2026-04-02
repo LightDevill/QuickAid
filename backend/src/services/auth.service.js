@@ -20,7 +20,7 @@ class AuthService {
     }
 
     // Verify OTP & Login/Register
-    static async verifyOtp(phone, otp, requestId, aadhaarNumber) {
+    static async verifyOtp(phone, otp, requestId, aadhaarNumber, name) {
         const request = await UserModel.getOtpRequest(requestId);
 
         if (!request) {
@@ -53,7 +53,7 @@ class AuthService {
             // Create new citizen
             user = await UserModel.create({
                 phone,
-                name: 'New User', // Placeholder, update in profile
+                name: name || 'New User', // Use provided name or placeholder
                 role: 'citizen',
                 aadhaar_hash: aadhaarNumber ? hashOtp(aadhaarNumber) : null
             });

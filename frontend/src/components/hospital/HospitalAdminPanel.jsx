@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { LayoutDashboard, BedDouble, ClipboardList, Settings, TrendingUp, AlertCircle, Users, BarChart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { hospitalApi } from '../../api/hospitalApi';
+import { mockHospitals } from '../../api/mockData';
 import useAuth from '../../hooks/useAuth';
 import BedAvailabilityManager from './BedAvailabilityManager';
 import BookingRequestList from './BookingRequestList';
@@ -27,10 +28,35 @@ const HospitalAdminPanel = () => {
         setLoading(true);
         try {
             const data = await hospitalApi.getHospital(user.hospital_id);
-            setHospital(data.hospital);
+            const resolvedHospital = data?.hospital || data || null;
+
+            if (resolvedHospital) {
+                setHospital(resolvedHospital);
+                return;
+            }
+
+            const fallbackHospital = mockHospitals.find(
+                (h) => h.hospital_id === user.hospital_id || h.id === user.hospital_id
+            );
+            if (fallbackHospital) {
+                setHospital(fallbackHospital);
+                // toast('Using mock hospital data', { icon: 'ℹ️' });
+            } else {
+                setHospital(null);
+            }
         } catch (error) {
             console.error('Fetch hospital error:', error);
-            toast.error('Failed to load hospital data');
+            const fallbackHospital = mockHospitals.find(
+                (h) => h.hospital_id === user.hospital_id || h.id === user.hospital_id
+            );
+
+            if (fallbackHospital) {
+                setHospital(fallbackHospital);
+                // toast('Backend unavailable. Loaded mock hospital data.', { icon: 'ℹ️' });
+            } else {
+                setHospital(null);
+                toast.error('Failed to load hospital data');
+            }
         } finally {
             setLoading(false);
         }

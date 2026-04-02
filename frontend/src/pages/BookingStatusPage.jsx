@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { MapPin, Phone, CheckCircle, XCircle, Download, ArrowLeft } from 'lucide-react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Clock, MapPin, User, Phone, CheckCircle, XCircle, Loader2, Download, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -8,21 +10,28 @@ import { bookingApi } from '../api/bookingApi';
 import { connectToBookingUpdates } from '../api/realtimeApi';
 import useBookingStore from '../stores/bookingStore';
 import useCountdown from '../hooks/useCountdown';
+import useAuth from '../hooks/useAuth';
 import { formatDate, formatTime } from '../utils/formatters';
 import { BED_TYPE_LABELS, BOOKING_LOCK_WINDOW } from '../utils/constants';
 import StatusBadge from '../components/common/StatusBadge';
 import LoadingSkeleton from '../components/common/LoadingSkeleton';
 
+const MotionDiv = motion.div;
+
 const BookingStatusPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const { updateBooking } = useBookingStore();
     const { updateBooking, bookings } = useBookingStore();
 
     const [booking, setBooking] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [sseConnection, setSseConnection] = useState(null);
 
-    const { seconds, isActive, start: startCountdown } = useCountdown(BOOKING_LOCK_WINDOW, () => handleCountdownComplete());
+    const isHospitalView = ['hospital_admin', 'quickaid_admin'].includes(user?.role);
+    const backPath = isHospitalView ? '/dashboard' : '/my-bookings';
+    const backLabel = isHospitalView ? 'Back to Hospital Module' : 'Back to My Bookings';
+    const { seconds, isActive, start: startCountdown, reset: resetCountdown } = useCountdown(BOOKING_LOCK_WINDOW, () => handleCountdownComplete());
 
     const handleCountdownComplete = () => {
         setBooking(prev => {
@@ -40,17 +49,43 @@ const BookingStatusPage = () => {
         });
     };
 
+    const handleAdminAction = async (action) => {
+        if (!booking?.booking_id) return;
+
+        try {
+            const response = action === 'approve'
+                ? await bookingApi.approveBooking(booking.booking_id)
+                : await bookingApi.rejectBooking(booking.booking_id);
+
+            const nextStatus = action === 'approve' ? 'approved' : 'rejected';
+            const updatedBooking = {
+                ...booking,
+                ...(response?.booking || {}),
+                status: response?.booking?.status || nextStatus,
+                rejection_reason: action === 'reject'
+                    ? response?.booking?.rejection_reason || 'Rejected from hospital workflow.'
+                    : booking.rejection_reason,
+            };
+
+            setBooking(updatedBooking);
+            updateBooking(updatedBooking);
+            resetCountdown();
+            toast.success(action === 'approve' ? 'Booking approved from hospital module' : 'Booking rejected from hospital module');
+        } catch (error) {
+            console.error(`Booking ${action} error:`, error);
+            toast.error(`Failed to ${action} booking`);
+        }
+    };
+
     useEffect(() => {
         fetchBooking();
 
-        // Setup SSE for real-time updates
-        const eventSource = connectToBookingUpdates(id, handleBookingUpdate);
-        setSseConnection(eventSource);
+        const connection = connectToBookingUpdates(id, {
+            onStatusChange: handleBookingUpdate,
+        });
 
         return () => {
-            if (eventSource) {
-                eventSource.close();
-            }
+            connection?.close?.();
         };
     }, [id]);
 
@@ -71,9 +106,13 @@ const BookingStatusPage = () => {
                 if (remaining > 0) {
                     startCountdown(remaining);
                 }
+            } else {
+                resetCountdown();
             }
         } catch (error) {
             console.error('Fetch booking error:', error);
+            toast.error('Failed to load booking details');
+            navigate(backPath);
 
             // Fallback: Check local store if API fails (useful for chain bookings)
             const localBooking = bookings.find(b => b.booking_id === id);
@@ -109,27 +148,40 @@ const BookingStatusPage = () => {
                 };
                 setBooking(approvedBooking);
                 updateBooking(approvedBooking);
+                resetCountdown();
                 toast.success('Simulation: Booking automatically approved by hospital!');
             }, 10000); // 10 seconds for demo
         }
         return () => clearTimeout(timeout);
     }, [booking?.booking_id, booking?.status]);
 
-    const handleBookingUpdate = (event) => {
+    const handleBookingUpdate = (update) => {
         try {
-            const data = JSON.parse(event.data);
+            const data = typeof update?.data === 'string'
+                ? JSON.parse(update.data)
+                : update;
 
             if (data.booking_id === id) {
-                setBooking(data);
-                updateBooking(data);
+                setBooking(prev => {
+                    const mergedBooking = { ...prev, ...data };
+                    updateBooking(mergedBooking);
+                    return mergedBooking;
+                });
 
                 // Show toast notification
                 if (data.status === 'approved') {
-                    toast.success('Booking approved! Please proceed to the hospital.');
+                    toast.success(isHospitalView
+                        ? 'Patient request approved in hospital workflow.'
+                        : 'Booking approved! Please proceed to the hospital.');
+                    resetCountdown();
                 } else if (data.status === 'rejected') {
-                    toast.error('Booking rejected. Please try another hospital.');
+                    toast.error(isHospitalView
+                        ? 'Patient request was rejected from hospital workflow.'
+                        : 'Booking rejected. Please try another hospital.');
+                    resetCountdown();
                 } else if (data.status === 'expired') {
                     toast.error('Booking expired. The 90-second window has passed.');
+                    resetCountdown();
                 }
             }
         } catch (error) {
@@ -157,6 +209,14 @@ const BookingStatusPage = () => {
             img.src = `data:image/svg+xml;base64,${btoa(svgData)}`;
         }
     };
+
+    const patientAge = booking?.age ?? booking?.patient_age ?? 'N/A';
+    const patientGender = booking?.gender ?? booking?.patient_gender ?? 'N/A';
+    const emergencyContact = booking?.emergency_contact
+        ? booking.emergency_contact.startsWith('+')
+            ? booking.emergency_contact
+            : `+91 ${booking.emergency_contact}`
+        : 'N/A';
 
     if (loading) {
         return (
@@ -189,15 +249,29 @@ const BookingStatusPage = () => {
                 </motion.div>
 
                 {/* Status Header */}
-                <motion.div
+                <MotionDiv
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="card p-6 mb-6"
                 >
-                    <div className="flex items-center justify-between mb-4">
-                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                            Booking Status
-                        </h1>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                        <div>
+                            <button
+                                onClick={() => navigate(backPath)}
+                                className="inline-flex items-center space-x-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-primary mb-3"
+                            >
+                                <ArrowLeft className="w-4 h-4" />
+                                <span>{backLabel}</span>
+                            </button>
+                            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+                                {isHospitalView ? 'Hospital Booking Workflow' : 'Booking Status'}
+                            </h1>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                {isHospitalView
+                                    ? 'Review and manage this patient request from the hospital module.'
+                                    : 'Track your booking and the next steps for hospital admission.'}
+                            </p>
+                        </div>
                         <StatusBadge status={booking.status} size="lg" />
                     </div>
 
@@ -223,6 +297,25 @@ const BookingStatusPage = () => {
                         </div>
                     )}
 
+                    {isHospitalView && booking.status === 'pending' && (
+                        <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                            <button
+                                onClick={() => handleAdminAction('reject')}
+                                className="btn-secondary inline-flex items-center justify-center space-x-2 border-red-200 text-red-600 hover:bg-red-50"
+                            >
+                                <XCircle className="w-4 h-4" />
+                                <span>Reject from Hospital Module</span>
+                            </button>
+                            <button
+                                onClick={() => handleAdminAction('approve')}
+                                className="btn-primary inline-flex items-center justify-center space-x-2"
+                            >
+                                <CheckCircle className="w-4 h-4" />
+                                <span>Approve from Hospital Module</span>
+                            </button>
+                        </div>
+                    )}
+
                     {/* Success Message */}
                     {booking.status === 'approved' && (
                         <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
@@ -233,7 +326,9 @@ const BookingStatusPage = () => {
                                         Booking Approved!
                                     </p>
                                     <p className="text-sm text-green-700 dark:text-green-300">
-                                        Please proceed to the hospital and show your QR code at reception.
+                                        {isHospitalView
+                                            ? 'This patient can now be received by the hospital team.'
+                                            : 'Please proceed to the hospital and show your QR code at reception.'}
                                     </p>
                                 </div>
                             </div>
@@ -256,11 +351,11 @@ const BookingStatusPage = () => {
                             </div>
                         </div>
                     )}
-                </motion.div>
+                </MotionDiv>
 
-                {/* QR Code - Only show for approved bookings */}
-                {booking.status === 'approved' && (
-                    <motion.div
+                {/* QR Code - Only show for approved citizen bookings */}
+                {booking.status === 'approved' && !isHospitalView && (
+                    <MotionDiv
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
@@ -287,11 +382,11 @@ const BookingStatusPage = () => {
                             <Download className="w-4 h-4" />
                             <span>Download QR Code</span>
                         </button>
-                    </motion.div>
+                    </MotionDiv>
                 )}
 
                 {/* Booking Details */}
-                <motion.div
+                <MotionDiv
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
@@ -336,13 +431,13 @@ const BookingStatusPage = () => {
                         <div>
                             <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Age / Gender</p>
                             <p className="text-slate-900 dark:text-white capitalize">
-                                {booking.age} / {booking.gender}
+                                {patientAge} / {patientGender}
                             </p>
                         </div>
 
                         <div>
                             <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Emergency Contact</p>
-                            <p className="text-slate-900 dark:text-white">+91 {booking.emergency_contact}</p>
+                            <p className="text-slate-900 dark:text-white">{emergencyContact}</p>
                         </div>
 
                         {booking.symptoms && (
@@ -352,10 +447,10 @@ const BookingStatusPage = () => {
                             </div>
                         )}
                     </div>
-                </motion.div>
+                </MotionDiv>
 
                 {/* Hospital Contact */}
-                <motion.div
+                <MotionDiv
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
@@ -383,7 +478,7 @@ const BookingStatusPage = () => {
                             </div>
                         )}
                     </div>
-                </motion.div>
+                </MotionDiv>
 
                 {/* Real-time indicator */}
                 <div className="mt-4 text-center">
