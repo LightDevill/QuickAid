@@ -111,7 +111,20 @@ export const authApi = {
         if (MOCK_MODE) {
             console.log('[MOCK] getMe');
             await delay(300);
-            return mockUser;
+
+            try {
+                const storage = localStorage.getItem('auth-storage');
+                if (storage) {
+                    const parsed = JSON.parse(storage);
+                    if (parsed?.state?.user) {
+                        return parsed.state.user;
+                    }
+                }
+            } catch (err) {
+                console.error('[MOCK] getMe storage parse error:', err);
+            }
+
+            return mockUser; // fallback to citizen
         }
 
         const response = await apiClient.get('/v1/auth/me');
@@ -127,11 +140,13 @@ export const authApi = {
 
             let user = mockUser;
             if (role === 'hospital_admin') user = mockHospitalAdmin;
-            if (role === 'quickaid_admin') user = mockQuickAidAdmin;
+            if (role === 'quickaid_admin' || role === 'admin') user = mockQuickAidAdmin;
 
             return {
                 access_token: 'mock_admin_access_token_' + Date.now(),
                 refresh_token: 'mock_admin_refresh_token_' + Date.now(),
+                accessToken: 'mock_admin_access_token_' + Date.now(), // For compatibility
+                refreshToken: 'mock_admin_refresh_token_' + Date.now(), // For compatibility
                 user,
             };
         }

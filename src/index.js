@@ -442,4 +442,3 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`QUICKAID server listening on http://localhost:${PORT}`);
 });
-

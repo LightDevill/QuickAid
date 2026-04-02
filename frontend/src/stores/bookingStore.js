@@ -9,9 +9,18 @@ const useBookingStore = create((set, get) => ({
     },
 
     addBooking: (booking) => {
-        set((state) => ({
-            bookings: [booking, ...state.bookings],
-        }));
+        set((state) => {
+            // If new booking is pending, expire all other pending bookings
+            let updatedBookings = state.bookings;
+            if (booking.status === 'pending') {
+                updatedBookings = state.bookings.map(b =>
+                    b.status === 'pending' ? { ...b, status: 'expired' } : b
+                );
+            }
+            return {
+                bookings: [booking, ...updatedBookings],
+            };
+        });
     },
 
     updateBookingStatus: (id, status) => {

@@ -1,0 +1,1 @@
+﻿{"success":true,"data":{"user":{"id":"72191718-ba8a-4553-8807-3e13bb79434c","role":"quickaid_admin","phone":"+919876543212","hospital_id":null,"iat":1774602081,"exp":1774602981}}}
