@@ -15,10 +15,16 @@ import useCountdown from '../hooks/useCountdown';
 const MyBookingsPage = () => {
     const { bookings, setBookings } = useBookingStore();
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('all'); // all, pending, approved, rejected
+    const [activeTab, setActiveTab] = useState('all'); // all, pending, approved, rejected, expired, cancelled
 
     useEffect(() => {
-        fetchBookings();
+        // Only fetch if we don't have bookings in the store
+        // This prevents overwriting locally simulated chain bookings when navigating back
+        if (bookings.length === 0) {
+            fetchBookings();
+        } else {
+            setLoading(false);
+        }
     }, []);
 
     const fetchBookings = async () => {
@@ -35,8 +41,24 @@ const MyBookingsPage = () => {
     };
 
     const getFilteredBookings = () => {
-        if (activeTab === 'all') return bookings;
-        return bookings.filter(booking => booking.status === activeTab);
+        let filtered = bookings;
+        if (activeTab !== 'all') {
+            filtered = bookings.filter(booking => booking.status === activeTab);
+        }
+
+        // Priority logic: Pending > Approved > Others. Newer dates within groups.
+        return [...filtered].sort((a, b) => {
+            // 1. Pending priority
+            if (a.status === 'pending' && b.status !== 'pending') return -1;
+            if (a.status !== 'pending' && b.status === 'pending') return 1;
+
+            // 2. Approved priority
+            if (a.status === 'approved' && b.status !== 'approved' && b.status !== 'pending') return -1;
+            if (a.status !== 'approved' && a.status !== 'pending' && b.status === 'approved') return 1;
+
+            // 3. Newest first for everything else or within the same priority
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
     };
 
     const filteredBookings = getFilteredBookings();
@@ -46,6 +68,7 @@ const MyBookingsPage = () => {
         { id: 'pending', label: 'Pending', count: bookings.filter(b => b.status === 'pending').length },
         { id: 'approved', label: 'Approved', count: bookings.filter(b => b.status === 'approved').length },
         { id: 'rejected', label: 'Rejected', count: bookings.filter(b => b.status === 'rejected').length },
+        { id: 'expired', label: 'Expired', count: bookings.filter(b => b.status === 'expired').length },
         { id: 'cancelled', label: 'Cancelled', count: bookings.filter(b => b.status === 'cancelled').length },
     ];
 
@@ -128,12 +151,12 @@ const BookingCard = ({ booking, index }) => {
         if (isProcessingRef.current || booking.status !== 'pending') return;
         isProcessingRef.current = true;
 
-        const rejectedBooking = {
+        const expiredBooking = {
             ...booking,
-            status: 'rejected',
+            status: 'expired',
             rejection_reason: 'not responded sending request for bed to the next nearest hospital'
         };
-        updateBooking(rejectedBooking);
+        updateBooking(expiredBooking);
         toast.error('Booking timeout: No response from hospital.');
 
         // Trigger chain reaction if it's our specific demo booking

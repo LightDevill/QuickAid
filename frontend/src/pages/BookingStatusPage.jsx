@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, Phone, CheckCircle, XCircle, Download, ArrowLeft } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Clock, MapPin, User, Phone, CheckCircle, XCircle, Loader2, Download, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
@@ -21,6 +23,7 @@ const BookingStatusPage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { updateBooking } = useBookingStore();
+    const { updateBooking, bookings } = useBookingStore();
 
     const [booking, setBooking] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -35,7 +38,7 @@ const BookingStatusPage = () => {
             if (prev && prev.status === 'pending') {
                 const updated = {
                     ...prev,
-                    status: 'rejected',
+                    status: 'expired',
                     rejection_reason: 'not responded sending request for bed to the next nearest hospital'
                 };
                 updateBooking(updated);
@@ -110,6 +113,24 @@ const BookingStatusPage = () => {
             console.error('Fetch booking error:', error);
             toast.error('Failed to load booking details');
             navigate(backPath);
+
+            // Fallback: Check local store if API fails (useful for chain bookings)
+            const localBooking = bookings.find(b => b.booking_id === id);
+            if (localBooking) {
+                setBooking(localBooking);
+
+                // Start countdown if local booking is pending
+                if (localBooking.status === 'pending') {
+                    const createdTime = new Date(localBooking.created_at).getTime();
+                    const now = Date.now();
+                    const elapsed = Math.floor((now - createdTime) / 1000);
+                    const remaining = Math.max(0, BOOKING_LOCK_WINDOW - elapsed);
+                    if (remaining > 0) startCountdown(remaining);
+                }
+            } else {
+                toast.error('Failed to load booking details');
+                navigate('/my-bookings');
+            }
         } finally {
             setLoading(false);
         }
@@ -212,6 +233,21 @@ const BookingStatusPage = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 py-8">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                {/* Back Button */}
+                <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="mb-6"
+                >
+                    <Link
+                        to="/my-bookings"
+                        className="inline-flex items-center space-x-2 text-slate-600 dark:text-slate-400 hover:text-primary transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                        <span>Back to Bookings</span>
+                    </Link>
+                </motion.div>
+
                 {/* Status Header */}
                 <MotionDiv
                     initial={{ opacity: 0, y: 20 }}

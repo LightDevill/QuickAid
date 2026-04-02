@@ -143,8 +143,8 @@ const LoginPage = () => {
                     {
                         access_token: accessToken,
                         refresh_token: refreshToken,
-                        accessToken: accessToken,
-                        refreshToken: refreshToken,
+                        accessToken,
+                        refreshToken,
                     },
                     user
                 );
