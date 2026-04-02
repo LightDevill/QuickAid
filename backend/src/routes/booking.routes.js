@@ -16,6 +16,12 @@ router.post(
 );
 
 router.get('/bookings/my', verifyToken, bookingController.getMyBookings);
+router.get(
+    '/bookings/hospital',
+    verifyToken,
+    authorize(['hospital_admin', 'quickaid_admin']),
+    bookingController.getHospitalBookings
+);
 router.get('/bookings/:id', verifyToken, bookingController.getBooking);
 
 router.post(

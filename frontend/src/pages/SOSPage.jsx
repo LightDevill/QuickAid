@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, MapPin, Loader2, Phone, Ambulance } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -16,8 +16,15 @@ const SOSPage = () => {
     const [requestAmbulance, setRequestAmbulance] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
+    // Auto-detect location on mount for faster SOS access
+    useEffect(() => {
+        if (!location) {
+            getCurrentLocation();
+        }
+    }, [location, getCurrentLocation]);
+
     const handleSubmit = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
 
         if (!location) {
             toast.error('Please enable location access');
@@ -25,29 +32,25 @@ const SOSPage = () => {
             return;
         }
 
+        // Navigate immediately as requested ("link this button")
+        navigate('/ambulance-tracking', {
+            state: { emergency: true }
+        });
+
+        // Fire the actual SOS in the background
         setSubmitting(true);
         try {
-            const response = await emergencyApi.createSOS({
+            await emergencyApi.createSOS({
                 latitude: location.lat,
                 longitude: location.lng,
                 severity,
                 description,
                 request_ambulance: requestAmbulance,
             });
-
-            toast.success('Emergency SOS sent! Finding nearest hospitals...');
-
-            // Navigate to search with emergency flag
-            navigate('/search', {
-                state: {
-                    emergency: true,
-                    sosId: response.sos_id,
-                    hospitals: response.matched_hospitals,
-                },
-            });
+            toast.success('Emergency SOS signal sent to nearby hospitals');
         } catch (error) {
-            console.error('SOS error:', error);
-            toast.error('Failed to send SOS. Please try again or call emergency services.');
+            console.error('Background SOS error:', error);
+            // We're already on the tracking page, so we just log the error
         } finally {
             setSubmitting(false);
         }

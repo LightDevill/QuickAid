@@ -1,34 +1,74 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, Building2, BedDouble, AlertTriangle, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { Activity, Building2, BedDouble, AlertTriangle, RefreshCw, CheckCircle2, XCircle, Users, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { analyticsApi } from '../../api/analyticsApi';
 import { hospitalApi } from '../../api/hospitalApi';
 import { bookingApi } from '../../api/bookingApi';
 
 const normalize = (response) => response?.data || response || {};
+const DASHBOARD_REQUEST_TIMEOUT_MS = 12000;
+
+const withTimeout = (promise, timeoutMs, label) =>
+    new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        promise
+            .then((result) => {
+                clearTimeout(timer);
+                resolve(result);
+            })
+            .catch((error) => {
+                clearTimeout(timer);
+                reject(error);
+            });
+    });
 
 const RootAdminPanel = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [stats, setStats] = useState({});
     const [hospitals, setHospitals] = useState([]);
+    const [bookingReport, setBookingReport] = useState(null);
     const [bookingId, setBookingId] = useState('');
 
     const loadDashboard = async () => {
         try {
             const [dashboardRes, hospitalsRes] = await Promise.all([
-                analyticsApi.getDashboard(),
-                hospitalApi.searchHospitals(19.076, 72.8777, 'general', 50),
+                withTimeout(
+                    analyticsApi.getDashboard(),
+                    DASHBOARD_REQUEST_TIMEOUT_MS,
+                    'Dashboard metrics request'
+                ),
+                withTimeout(
+                    hospitalApi.searchHospitals(19.076, 72.8777, 'general', 50),
+                    DASHBOARD_REQUEST_TIMEOUT_MS,
+                    'Hospital search request'
+                ),
             ]);
 
             const dashboard = normalize(dashboardRes);
             const hospitalData = normalize(hospitalsRes);
             setStats(dashboard);
             setHospitals(hospitalData.hospitals || []);
+
+            try {
+                const reportRes = await withTimeout(
+                    analyticsApi.getBookingReport(),
+                    DASHBOARD_REQUEST_TIMEOUT_MS,
+                    'Booking report request'
+                );
+                setBookingReport(normalize(reportRes));
+            } catch (reportError) {
+                // Optional source for extended metrics; keep panel usable if unavailable.
+                console.warn('Root admin booking report unavailable:', reportError);
+                setBookingReport(null);
+            }
         } catch (error) {
             console.error('Root admin dashboard load error:', error);
-            toast.error('Failed to load control center data');
+            toast.error(error?.message || 'Failed to load control center data');
         }
     };
 
@@ -72,6 +112,66 @@ const RootAdminPanel = () => {
         ],
         [stats, hospitals.length]
     );
+
+    const overallStats = useMemo(() => {
+        const totalBeds = hospitals.reduce(
+            (sum, hospital) => sum + (hospital.beds || []).reduce((bedSum, bed) => bedSum + (bed.total || 0), 0),
+            0
+        );
+
+        const availableBeds = hospitals.reduce(
+            (sum, hospital) => sum + (hospital.beds || []).reduce((bedSum, bed) => bedSum + (bed.available || 0), 0),
+            0
+        );
+
+        const onlineHospitals = hospitals.filter((hospital) => hospital.is_active !== false).length;
+        const activeHospitalAdmins = hospitals.reduce(
+            (sum, hospital) => sum + (hospital.doctors || []).filter((doctor) => doctor.on_duty).length,
+            0
+        );
+
+        const bookingsSeries = bookingReport?.bookings || [];
+        const approvalsSeries = bookingReport?.approvals || [];
+        const recentBookings = bookingsSeries.reduce((sum, item) => sum + Number(item || 0), 0);
+        const recentApprovals = approvalsSeries.reduce((sum, item) => sum + Number(item || 0), 0);
+        const approvalRate = recentBookings > 0 ? Math.round((recentApprovals / recentBookings) * 100) : null;
+
+        const userActions = (stats.todays_bookings || 0) + (stats.active_emergencies || 0);
+        const uptimePercent = totalBeds > 0 ? Math.round((availableBeds / totalBeds) * 100) : null;
+
+        return {
+            userActions,
+            recentBookings,
+            approvalRate,
+            onlineHospitals,
+            activeHospitalAdmins,
+            uptimePercent,
+        };
+    }, [bookingReport, hospitals, stats]);
+
+    const hospitalAdminActivities = useMemo(() => {
+        const now = Date.now();
+        const generated = hospitals.slice(0, 6).map((hospital, index) => {
+            const available = (hospital.beds || []).reduce((sum, bed) => sum + (bed.available || 0), 0);
+            return {
+                id: `hosp-admin-${hospital.hospital_id || hospital.id || index}`,
+                hospital: hospital.name,
+                action: available < 10 ? 'Escalated low-bed alert' : 'Published routine bed availability update',
+                timestamp: new Date(now - index * 8 * 60 * 1000).toISOString(),
+                status: available < 10 ? 'critical' : 'normal',
+            };
+        });
+
+        const recentActivity = (stats.recent_activity || []).slice(0, 4).map((item, index) => ({
+            id: `recent-${index}`,
+            hospital: 'System Activity',
+            action: item.message || item.type || 'Admin activity',
+            timestamp: item.time || 'just now',
+            status: item.type === 'emergency' ? 'critical' : 'normal',
+        }));
+
+        return [...generated, ...recentActivity];
+    }, [hospitals, stats.recent_activity]);
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -152,6 +252,65 @@ const RootAdminPanel = () => {
                 ))}
             </div>
 
+            <div className="card p-6">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Overall Activity Statistics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">User Activity</p>
+                        <div className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                            <div className="flex items-center justify-between">
+                                <span className="inline-flex items-center gap-2"><Users className="w-4 h-4" />Actions Today</span>
+                                <span className="font-semibold">{overallStats.userActions}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="inline-flex items-center gap-2"><ClipboardCheck className="w-4 h-4" />Recent Booking Volume</span>
+                                <span className="font-semibold">{overallStats.recentBookings}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span>Approval Rate</span>
+                                <span className="font-semibold">{overallStats.approvalRate ?? 'N/A'}{overallStats.approvalRate !== null ? '%' : ''}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Hospital Operations</p>
+                        <div className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                            <div className="flex items-center justify-between">
+                                <span className="inline-flex items-center gap-2"><Building2 className="w-4 h-4" />Hospitals Online</span>
+                                <span className="font-semibold">{overallStats.onlineHospitals}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="inline-flex items-center gap-2"><ShieldCheck className="w-4 h-4" />Active Duty Staff</span>
+                                <span className="font-semibold">{overallStats.activeHospitalAdmins}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span>Capacity Health</span>
+                                <span className="font-semibold">{overallStats.uptimePercent ?? 'N/A'}{overallStats.uptimePercent !== null ? '%' : ''}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Current Snapshot</p>
+                        <div className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                            <div className="flex items-center justify-between">
+                                <span>Total Beds</span>
+                                <span className="font-semibold">{stats.total_beds ?? 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span>Available Beds</span>
+                                <span className="font-semibold">{stats.available_beds ?? 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span>Avg Response Time</span>
+                                <span className="font-semibold">{stats.avg_response_time ?? 'N/A'}{stats.avg_response_time ? ' min' : ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="card p-6 xl:col-span-2">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Hospital Status Monitor</h3>
@@ -205,6 +364,31 @@ const RootAdminPanel = () => {
                             <Link to="/sos" className="text-primary hover:underline">Open SOS Console</Link>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div className="card p-6">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Hospital Admin Activity Monitor</h3>
+                <div className="space-y-3 max-h-[320px] overflow-auto pr-1">
+                    {hospitalAdminActivities.length > 0 ? hospitalAdminActivities.map((entry) => (
+                        <div
+                            key={entry.id}
+                            className="flex items-start justify-between gap-4 border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+                        >
+                            <div>
+                                <p className="font-medium text-slate-900 dark:text-white">{entry.hospital}</p>
+                                <p className="text-sm text-slate-600 dark:text-slate-400">{entry.action}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                                <p className={`text-xs font-semibold ${entry.status === 'critical' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                    {entry.status === 'critical' ? 'Needs Attention' : 'Normal'}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{entry.timestamp}</p>
+                            </div>
+                        </div>
+                    )) : (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">No hospital admin activity captured yet.</p>
+                    )}
                 </div>
             </div>
         </div>

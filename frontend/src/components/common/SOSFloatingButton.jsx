@@ -1,12 +1,12 @@
 import { AlertCircle } from 'lucide-react';
-import useUIStore from '../../stores/uiStore';
+import { useNavigate } from 'react-router-dom';
 
 const SOSFloatingButton = () => {
-    const { openSosModal } = useUIStore();
+    const navigate = useNavigate();
 
     return (
         <button
-            onClick={openSosModal}
+            onClick={() => navigate('/sos')}
             className="fixed bottom-6 right-6 z-40 w-16 h-16 bg-accent hover:bg-accent-600 text-white rounded-full shadow-lg flex items-center justify-center transition-smooth pulse-ring focus:outline-none focus:ring-4 focus:ring-accent-300"
             aria-label="Emergency SOS"
         >

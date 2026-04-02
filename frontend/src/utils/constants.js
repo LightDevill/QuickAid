@@ -200,6 +200,10 @@ export const DEFAULT_SEARCH_RADIUS = 10; // km
 export const MIN_SEARCH_RADIUS = 1;
 export const MAX_SEARCH_RADIUS = 50;
 export const DEFAULT_RESULTS_LIMIT = 20;
+export const DEFAULT_SEARCH_LOCATION = {
+    lat: 19.0760,
+    lng: 72.8777,
+};
 
 // ============================================
 // MATCH SCORE THRESHOLDS

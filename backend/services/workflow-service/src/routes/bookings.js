@@ -12,6 +12,16 @@ const router = express.Router();
 const LOCK_DURATION_SEC = 90;
 const JWT_SECRET = process.env.JWT_SECRET || 'quickaid-dev-secret';
 
+function buildAuthUser(source = {}) {
+    return {
+        user_id: source.user_id || null,
+        role: source.role ? String(source.role).toLowerCase() : null,
+        hospital_id: source.hospital_id || null,
+        phone: source.phone || null,
+        mock: Boolean(source.mock)
+    };
+}
+
 // Auth middleware (inline for service independence)
 async function requireAuth(req, res, next) {
     const authHeader = req.headers.authorization;
@@ -30,13 +40,13 @@ async function requireAuth(req, res, next) {
         const token = authHeader.slice(7);
         const cached = await redis.getJSON(`session:${token}`);
         if (cached) {
-            req.user = cached;
+            req.user = buildAuthUser(cached);
             return next();
         }
 
         const jwt = require('jsonwebtoken');
         const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = { user_id: decoded.user_id, role: decoded.role };
+        req.user = buildAuthUser(decoded);
         next();
     } catch (err) {
         return res.status(401).json({ error: 'E_TOKEN_INVALID' });
@@ -50,6 +60,27 @@ function requireRoles(...roles) {
         }
         next();
     };
+}
+
+async function resolveHospitalScope(req, requestedHospitalId) {
+    if (req.user?.role === 'quickaid_admin') {
+        return requestedHospitalId || null;
+    }
+
+    if (req.user?.hospital_id) {
+        return req.user.hospital_id;
+    }
+
+    if (!req.user?.user_id) {
+        return null;
+    }
+
+    const result = await db.query(
+        'SELECT hospital_id FROM users WHERE user_id = $1',
+        [req.user.user_id]
+    );
+
+    return result.rows[0]?.hospital_id || null;
 }
 
 /**
@@ -186,6 +217,65 @@ router.post('/', requireAuth, requireRoles('citizen', 'hospital_admin', 'quickai
 });
 
 /**
+ * GET /my
+ * Get bookings for the current citizen
+ */
+router.get('/my', requireAuth, async (req, res, next) => {
+    try {
+        if (!req.user?.user_id) {
+            return res.json({ bookings: [] });
+        }
+
+        const result = await db.query(
+            'SELECT * FROM bookings WHERE citizen_id = $1 ORDER BY created_at DESC',
+            [req.user.user_id]
+        );
+
+        res.json({ bookings: result.rows });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * GET /hospital
+ * Get bookings for a hospital workflow view
+ */
+router.get('/hospital', requireAuth, requireRoles('hospital_admin', 'quickaid_admin'), async (req, res, next) => {
+    try {
+        const requestedHospitalId = req.query.hospital_id ? String(req.query.hospital_id) : null;
+        const scopedHospitalId = await resolveHospitalScope(req, requestedHospitalId);
+
+        if (!scopedHospitalId) {
+            return res.status(400).json({
+                error: 'E_HOSPITAL_ID_REQUIRED',
+                message: 'hospital_id is required for this request'
+            });
+        }
+
+        if (
+            req.user?.role === 'hospital_admin' &&
+            requestedHospitalId &&
+            requestedHospitalId !== scopedHospitalId
+        ) {
+            return res.status(403).json({ error: 'E_FORBIDDEN' });
+        }
+
+        const result = await db.query(
+            'SELECT * FROM bookings WHERE hospital_id = $1 ORDER BY created_at DESC',
+            [scopedHospitalId]
+        );
+
+        res.json({
+            hospital_id: scopedHospitalId,
+            bookings: result.rows
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
  * Schedule expiry check for a booking
  */
 function scheduleExpiryCheck(bookingId, delayMs) {
@@ -244,7 +334,20 @@ router.get('/:id', requireAuth, async (req, res, next) => {
             return res.status(404).json({ error: 'E_BOOKING_NOT_FOUND' });
         }
 
-        res.json(result.rows[0]);
+        const booking = result.rows[0];
+
+        if (req.user?.role === 'citizen' && booking.citizen_id && booking.citizen_id !== req.user.user_id) {
+            return res.status(403).json({ error: 'E_FORBIDDEN' });
+        }
+
+        if (req.user?.role === 'hospital_admin') {
+            const scopedHospitalId = await resolveHospitalScope(req, booking.hospital_id);
+            if (!scopedHospitalId || scopedHospitalId !== booking.hospital_id) {
+                return res.status(403).json({ error: 'E_FORBIDDEN' });
+            }
+        }
+
+        res.json(booking);
     } catch (err) {
         next(err);
     }
@@ -268,6 +371,11 @@ router.post('/:id/approve', requireAuth, requireRoles('hospital_admin', 'quickai
         }
 
         const booking = result.rows[0];
+        const scopedHospitalId = await resolveHospitalScope(req, booking.hospital_id);
+
+        if (req.user?.role === 'hospital_admin' && scopedHospitalId !== booking.hospital_id) {
+            return res.status(403).json({ error: 'E_FORBIDDEN' });
+        }
 
         await db.transaction(async (client) => {
             // Move from locked to reserved
@@ -315,6 +423,11 @@ router.post('/:id/reject', requireAuth, requireRoles('hospital_admin', 'quickaid
         }
 
         const booking = result.rows[0];
+        const scopedHospitalId = await resolveHospitalScope(req, booking.hospital_id);
+
+        if (req.user?.role === 'hospital_admin' && scopedHospitalId !== booking.hospital_id) {
+            return res.status(403).json({ error: 'E_FORBIDDEN' });
+        }
 
         await db.transaction(async (client) => {
             // Release bed back to available

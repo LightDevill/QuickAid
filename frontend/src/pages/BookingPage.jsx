@@ -81,7 +81,7 @@ const BookingPage = () => {
             setActiveBooking(response.booking);
 
             toast.success('Booking created successfully!');
-            navigate(`/booking/${response.booking.booking_id}`);
+            navigate(`/booking-status/${response.booking.booking_id}`);
         } catch (error) {
             console.error('Create booking error:', error);
             toast.error(error.response?.data?.error || 'Failed to create booking');

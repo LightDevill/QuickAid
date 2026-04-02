@@ -100,6 +100,28 @@ const Navbar = () => {
                                             <p className="text-xs text-slate-500 dark:text-slate-400">{user.phone}</p>
                                             <p className="text-xs text-primary capitalize">{user.role?.replace('_', ' ')}</p>
                                         </div>
+                                        
+                                        {user?.role === 'citizen' && (
+                                            <>
+                                                <Link 
+                                                    to="/dashboard" 
+                                                    className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                                    onClick={() => setUserMenuOpen(false)}
+                                                >
+                                                    <Home className="w-4 h-4" />
+                                                    <span>Dashboard</span>
+                                                </Link>
+                                                <Link 
+                                                    to="/my-bookings" 
+                                                    className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                                    onClick={() => setUserMenuOpen(false)}
+                                                >
+                                                    <FileText className="w-4 h-4" />
+                                                    <span>My Bookings</span>
+                                                </Link>
+                                            </>
+                                        )}
+
                                         <button
                                             onClick={handleLogout}
                                             className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700"

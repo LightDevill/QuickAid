@@ -12,8 +12,8 @@ const sendOtp = async (req, res, next) => {
 
 const verifyOtp = async (req, res, next) => {
     try {
-        const { phone, otp, request_id, aadhaar_number } = req.body;
-        const result = await AuthService.verifyOtp(phone, otp, request_id, aadhaar_number);
+        const { phone, otp, request_id, aadhaar_number, name } = req.body;
+        const result = await AuthService.verifyOtp(phone, otp, request_id, aadhaar_number, name);
         res.json({ success: true, data: result, message: 'Login successful' });
     } catch (error) {
         next(error);

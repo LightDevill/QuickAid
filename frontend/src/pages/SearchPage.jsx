@@ -1,21 +1,21 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Search, MapPin, Loader2, SlidersHorizontal, ArrowUpDown, Star, Phone } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, MapPin, Loader2, SlidersHorizontal, ArrowUpDown, Star, Phone, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import useSearchStore from '../stores/searchStore';
 import useGeolocation from '../hooks/useGeolocation';
 import { hospitalApi } from '../api/hospitalApi';
-import { BED_TYPE_LABELS } from '../utils/constants';
+import { BED_TYPE_LABELS, DEFAULT_SEARCH_LOCATION } from '../utils/constants';
 import { formatDistance, getFreshnessState } from '../utils/formatters';
 import LoadingSkeleton from '../components/common/LoadingSkeleton';
 import EmptyState from '../components/common/EmptyState';
 import BedChip from '../components/common/BedChip';
 
 const SearchPage = () => {
-    const navigate = useNavigate();
     const { results, filters, loading, sortBy, setResults, setFilters, setLoading, setSortBy } = useSearchStore();
     const { location, loading: geoLoading, getCurrentLocation } = useGeolocation();
+    const hasAutoSearchedRef = useRef(false);
 
     const [showFilters, setShowFilters] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters);
@@ -30,23 +30,25 @@ const SearchPage = () => {
         }
     }, [location]);
 
-    const handleSearch = async () => {
-        if (!localFilters.lat || !localFilters.lng) {
-            toast.error('Please provide your location');
-            return;
-        }
+    const handleSearch = async ({ searchFilters = localFilters, silent = false } = {}) => {
+        const activeFilters = {
+            ...searchFilters,
+            lat: searchFilters?.lat || DEFAULT_SEARCH_LOCATION.lat,
+            lng: searchFilters?.lng || DEFAULT_SEARCH_LOCATION.lng,
+        };
 
         setLoading(true);
-        setFilters(localFilters);
+        setLocalFilters(activeFilters);
+        setFilters(activeFilters);
 
         try {
-            console.log('[SEARCH] Searching with:', localFilters);
+            console.log('[SEARCH] Searching with:', activeFilters);
 
             const response = await hospitalApi.searchHospitals(
-                localFilters.lat,
-                localFilters.lng,
-                localFilters.bed_type,
-                localFilters.radius
+                activeFilters.lat,
+                activeFilters.lng,
+                activeFilters.bed_type,
+                activeFilters.radius
             );
 
             console.log('[SEARCH] Response:', response);
@@ -55,13 +57,17 @@ const SearchPage = () => {
             setResults(hospitals);
 
             if (!hospitals || hospitals.length === 0) {
-                toast.error('No hospitals found. Try expanding your search radius.');
-            } else {
+                if (!silent) {
+                    toast.error('No hospitals found. Try expanding your search radius.');
+                }
+            } else if (!silent) {
                 toast.success('Found ' + hospitals.length + ' hospitals');
             }
         } catch (error) {
             console.error('Search error:', error);
-            toast.error('Failed to search hospitals');
+            if (!silent) {
+                toast.error('Failed to search hospitals');
+            }
             setResults([]);
         } finally {
             setLoading(false);
@@ -71,6 +77,14 @@ const SearchPage = () => {
     const handleUseMyLocation = () => {
         getCurrentLocation();
     };
+
+    useEffect(() => {
+        if (hasAutoSearchedRef.current) return;
+        if (!localFilters.lat || !localFilters.lng) return;
+
+        hasAutoSearchedRef.current = true;
+        handleSearch({ searchFilters: localFilters, silent: true });
+    }, [localFilters.lat, localFilters.lng]);
 
     const getSortedResults = () => {
         if (!results || results.length === 0) return [];
@@ -202,7 +216,7 @@ const SearchPage = () => {
                 {sortedResults.length > 0 && (
                     <div className="mb-4 flex justify-between items-center">
                         <p className="text-slate-600 dark:text-slate-400">
-                            Found <span className="font-semibold text-slate-900 dark:text-white">{sortedResults.length}</span> hospitals
+                            Found <span className="font-semibold text-slate-900 dark:text-white">{sortedResults.length}</span> hospitals near <span className="font-medium text-slate-900 dark:text-white">{formatLatLng()}</span>
                         </p>
 
                         <div className="flex items-center space-x-2">
@@ -238,13 +252,15 @@ const SearchPage = () => {
                     <EmptyState
                         type="search"
                         title="No hospitals found"
-                        message="Click Use My Location and then Search Hospitals to find beds near you."
+                        message="Adjust your radius or bed type, or use your live location to refresh nearby hospitals."
                     />
                 )}
             </div>
         </div>
     );
 };
+
+const MotionDiv = motion.div;
 
 const HospitalCard = ({ hospital, bedType }) => {
     const navigate = useNavigate();
@@ -253,6 +269,8 @@ const HospitalCard = ({ hospital, bedType }) => {
     const bedData = hospital.beds?.find(bed => bed.bed_type === bedType);
     const freshness = getFreshnessState(hospital.updated_at || hospital.last_updated);
     const matchScore = hospital.match_score || hospital.score || 0;
+    const selectedAvailability = hospital.selected_bed_available ?? bedData?.available;
+    const selectedTotal = hospital.selected_bed_total ?? bedData?.total;
 
     const getFreshnessIcon = () => {
         if (freshness === 'verified') return '🟢';
@@ -275,7 +293,7 @@ const HospitalCard = ({ hospital, bedType }) => {
     };
 
     return (
-        <motion.div
+        <MotionDiv
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="card p-6 hover:shadow-lg transition-smooth"
@@ -328,6 +346,36 @@ const HospitalCard = ({ hospital, bedType }) => {
                         ))}
                     </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                        <div className="rounded-xl bg-primary/5 border border-primary/10 px-3 py-2">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                                {BED_TYPE_LABELS[bedType] || 'Selected Bed'}
+                            </p>
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                {selectedAvailability ?? 0} / {selectedTotal ?? 0} beds available
+                            </p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 px-3 py-2">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Estimated Reach
+                            </p>
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-primary" />
+                                {hospital.eta_minutes ? `~${hospital.eta_minutes} min` : 'ETA unavailable'}
+                            </p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 px-3 py-2">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Coordinates
+                            </p>
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                {hospital.lat !== undefined && hospital.lng !== undefined
+                                    ? `${hospital.lat.toFixed(3)}, ${hospital.lng.toFixed(3)}`
+                                    : 'Not available'}
+                            </p>
+                        </div>
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
                         {hospital.distance_km !== undefined && (
                             <span className="flex items-center space-x-1">
@@ -363,7 +411,7 @@ const HospitalCard = ({ hospital, bedType }) => {
                     </Link>
                 </div>
             </div>
-        </motion.div>
+        </MotionDiv>
     );
 };
 

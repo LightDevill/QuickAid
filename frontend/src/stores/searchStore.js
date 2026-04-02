@@ -1,12 +1,13 @@
 import { create } from 'zustand';
+import { DEFAULT_SEARCH_LOCATION, DEFAULT_SEARCH_RADIUS } from '../utils/constants';
 
 const useSearchStore = create((set) => ({
     results: [],
     filters: {
-        lat: null,
-        lng: null,
+        lat: DEFAULT_SEARCH_LOCATION.lat,
+        lng: DEFAULT_SEARCH_LOCATION.lng,
         bed_type: 'general',
-        radius: 10,
+        radius: DEFAULT_SEARCH_RADIUS,
     },
     loading: false,
     sortBy: 'score', // score, distance, availability

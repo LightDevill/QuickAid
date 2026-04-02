@@ -4,9 +4,10 @@ const config = require('../config/env');
 
 const generateOtp = (length = 6) => {
     // Generate random numeric OTP
-    // Keep development deterministic for easier local testing
-    if (config.env === 'development') return '123456';
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    // Development is dynamic too now
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log(`[DEVELOPMENT] Generated OTP: ${otp}`);
+    return otp;
 };
 
 const hashOtp = (otp) => {
